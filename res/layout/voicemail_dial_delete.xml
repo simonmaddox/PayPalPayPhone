@@ -42,14 +42,14 @@
          
          android:src="@drawable/ic_dial_action_voice_mail"
     -->
-    <ImageButton android:id="@+id/voicemailButton"
+    <Button android:id="@+id/voicemailButton"
         android:layout_width="87dip"
         android:layout_height="50dip"
         android:layout_gravity="center_vertical|top"
-        android:state_enabled="false"
-        android:background="@drawable/btn_dial_action_left_disable"
+        android:background="@drawable/btn_dial_vm"
         android:tint="#ff555555"
-        
+        android:textColor="#ffffff"
+        android:textStyle="bold"
          />
 
     <!-- Onscreen "Dial" button, used on all platforms by

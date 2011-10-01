@@ -9,9 +9,11 @@ import com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberFormat;
 import com.google.i18n.phonenumbers.Phonenumber.PhoneNumber;
 import com.loopj.android.http.AsyncHttpResponseHandler;
 import com.paypal.android.MEP.PayPal;
+import com.paypal.android.MEP.PayPalAdvancedPayment;
 import com.paypal.android.MEP.PayPalPreapproval;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioManager;
@@ -56,6 +58,7 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 	private ImageButton dialButton;
 	private ImageButton deleteButton;
 	private RelativeLayout phoneWrapper;
+	private Button voicemailButton;
 	
 	private SipManager sipManager = null;
     private SipProfile me = null;
@@ -71,6 +74,9 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
     private PowerManager.WakeLock mProximityWakeLock;
     
     private long callStartTime;
+    
+    double credits = 0.00;
+    double pricePerMinute = 0.00;
     
     static {
         // Map the buttons to the display characters
@@ -116,12 +122,7 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
             mDialerKeyListener = new DTMFKeyListener();
             mDialpadDigits.setKeyListener(mDialerKeyListener);
 
-            // remove the long-press context menus that support
-            // the edit (copy / paste / select) functions.
             mDialpadDigits.setLongClickable(false);
-
-            // TODO: may also want this at some point:
-            // mDialpadDigits.setMovementMethod(new DTMFDisplayMovementMethod());
         }
         
         setupKeypad(dialpad);
@@ -146,97 +147,85 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
         	
         });
         
+        voicemailButton = (Button) findViewById(R.id.voicemailButton);
+        voicemailButton.setText("£0.00");
+        voicemailButton.setOnClickListener(new OnClickListener(){
+
+			@Override
+			public void onClick(View arg0) {
+				SMHttpClient.pay(PAY_KEY, 1.00, new AsyncHttpResponseHandler(){
+					@Override
+					public void onSuccess(String response){
+						Log.e("S", response);
+						if (response.contains("COMPLETED")){
+							credits += 1.0;
+							Log.e("CREDITS", "" + credits);
+							handler.post(new Runnable(){
+
+								@Override
+								public void run() {
+									voicemailButton.setText(String.format("£%.2f", credits));
+								}
+								
+							});
+						}
+					}
+					
+					@Override
+					public void onFailure(Throwable e){
+						Log.e("FAIL", e.toString());
+					}
+				});
+			}
+        	
+        });
+        
         dialButton = (ImageButton) findViewById(R.id.dialButton);
         dialButton.setOnClickListener(new OnClickListener(){
 
 			@Override
 			public void onClick(View view) {
-				
-				if (call != null && (call.getState() == SipSession.State.IN_CALL || call.getState() == SipSession.State.OUTGOING_CALL || call.getState() == SipSession.State.OUTGOING_CALL_RING_BACK)){
-					try {
-						call.endCall();
-					} catch (SipException e) {
-					}
-					return;
-				}
+				String n = mDialpadDigits.getText().toString();
 				
 				PhoneNumberUtil phoneUtil = PhoneNumberUtil.getInstance();
 				String tempMsisdn = null;
 				try {
-					PhoneNumber number = phoneUtil.parse(mDialpadDigits.getText().toString(), "GB");
+					PhoneNumber number = phoneUtil.parse(n, "GB");
 					tempMsisdn = phoneUtil.format(number, PhoneNumberFormat.E164).replace("+", "");
 
 				} catch (NumberParseException e) {
-					tempMsisdn = mDialpadDigits.getText().toString();
+					tempMsisdn = n;
 				}
 				
-				call = null;
-
-				try {
-
-					SipProfile.Builder builder = new SipProfile.Builder(tempMsisdn, me.getSipDomain());
-					builder.setAutoRegistration(false);
-					SipProfile rec = builder.build();
-
-					call = sipManager.makeAudioCall(me, rec, new SipAudioCall.Listener() {
-						@Override
-						public void onRinging(SipAudioCall call, SipProfile caller) {
-							Log.e("SIP", "onRinging");
-						}
-
-						@Override
-						public void onCallEstablished (SipAudioCall call) {
-							if (!mProximityWakeLock.isHeld()) {
-							      mProximityWakeLock.acquire();
-							}
-							Log.e("SIP", "onCallEstablished");
-							callStartTime = new Date().getTime();
-							call.startAudio();
-							call.setSpeakerMode(true);
-						}
-
-						@Override
-						public void onCallEnded (SipAudioCall call) {
-							Log.e("SIP", "onCallEnded");
-							
-							if (mProximityWakeLock.isHeld()) {
-								mProximityWakeLock.release();
-							}
-							
-							handler.post(new Runnable(){
-
-								@Override
-								public void run() {
-									callEnded();
-								}
-								
-							});
-						}
-
-						@Override
-						public void onChanged (SipAudioCall call) {
-							Log.e("SIP", "onChanged: " + call.getState());
-						}
-
-						@Override
-						public void onError (SipAudioCall call, int errorCode, String errorMessage) {				
-							Log.e("SIP ERROR", "" + errorMessage + " : " + errorCode);
-						}
-					}, 30);
-					
-					
-					handler.post(new Runnable(){
-
-						@Override
-						public void run() {
-							callStarted();
-						}
+				final String msisdn = tempMsisdn;
+				
+				SMHttpClient.getRates(msisdn, new AsyncHttpResponseHandler(){
+					@Override
+		    		public void onSuccess(String response) {
+						Log.e("RATE", response);
+						pricePerMinute = Double.parseDouble(response);
 						
-					});
+						if (credits > pricePerMinute){
 
-				} catch (Exception e) {
-					Log.e("EX", e.toString());
-				}
+							startCall(msisdn);
+						} else {
+							AlertDialog.Builder builder = new AlertDialog.Builder(PayPalPhoneActivity.context);
+							builder.setTitle("MOAR CREDIT PLZ");
+							builder.setMessage("You need more credit in order to make this call");
+							builder.setNegativeButton("Dismiss", null);
+							
+							AlertDialog alert = builder.create();
+							alert.show();
+							return;
+						}
+					}
+					
+					@Override
+		    		public void onFailure(Throwable e) {
+						Log.e("RATESFAIL", e.toString());
+					}
+				});
+				
 			}
         	
         });
@@ -282,6 +271,84 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
     	return true;
     }
     
+    
+    public void startCall(String msisdn){
+		if (call != null && (call.getState() == SipSession.State.IN_CALL || call.getState() == SipSession.State.OUTGOING_CALL || call.getState() == SipSession.State.OUTGOING_CALL_RING_BACK)){
+			try {
+				call.endCall();
+			} catch (SipException e) {
+			}
+			return;
+		}
+		
+		call = null;
+
+		try {
+
+			SipProfile.Builder builder = new SipProfile.Builder(msisdn, me.getSipDomain());
+			builder.setAutoRegistration(false);
+			SipProfile rec = builder.build();
+
+			call = sipManager.makeAudioCall(me, rec, new SipAudioCall.Listener() {
+				@Override
+				public void onRinging(SipAudioCall call, SipProfile caller) {
+					Log.e("SIP", "onRinging");
+				}
+
+				@Override
+				public void onCallEstablished (SipAudioCall call) {
+					if (!mProximityWakeLock.isHeld()) {
+					      mProximityWakeLock.acquire();
+					}
+					Log.e("SIP", "onCallEstablished");
+					callStartTime = new Date().getTime();
+					call.startAudio();
+					call.setSpeakerMode(true);
+				}
+
+				@Override
+				public void onCallEnded (SipAudioCall call) {
+					Log.e("SIP", "onCallEnded");
+					
+					if (mProximityWakeLock.isHeld()) {
+						mProximityWakeLock.release();
+					}
+					
+					handler.post(new Runnable(){
+
+						@Override
+						public void run() {
+							callEnded();
+						}
+						
+					});
+				}
+
+				@Override
+				public void onChanged (SipAudioCall call) {
+					Log.e("SIP", "onChanged: " + call.getState());
+				}
+
+				@Override
+				public void onError (SipAudioCall call, int errorCode, String errorMessage) {				
+					Log.e("SIP ERROR", "" + errorMessage + " : " + errorCode);
+				}
+			}, 30);
+			
+			
+			handler.post(new Runnable(){
+
+				@Override
+				public void run() {
+					callStarted();
+				}
+				
+			});
+
+		} catch (Exception e) {
+			Log.e("EX", e.toString());
+		}
+    }
     
     public void startPreApproval(){
     	SMHttpClient.getPreApproval(new AsyncHttpResponseHandler(){
@@ -403,6 +470,8 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
                 Log.e("SIP","Connection error.");
             } catch (java.text.ParseException e) {
 				
+			} catch (NullPointerException e){
+				Log.e("NPE","DOH");
 			}
 
         }
@@ -612,7 +681,6 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 
             char c = lookup(event);
 
-            // TODO: stopTone does not take in character input, we may want to
             // consider checking for this ourselves.
             if (ok(getAcceptedChars(), c)) {
                 //stopTone();
