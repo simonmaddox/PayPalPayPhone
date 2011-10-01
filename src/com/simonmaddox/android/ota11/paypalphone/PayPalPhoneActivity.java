@@ -14,6 +14,7 @@ import com.paypal.android.MEP.PayPalPreapproval;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioManager;
 import android.net.ParseException;
 import android.net.sip.SipAudioCall;
 import android.net.sip.SipException;
@@ -191,7 +192,7 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 							Log.e("SIP", "onCallEstablished");
 							callStartTime = new Date().getTime();
 							call.startAudio();
-							call.setSpeakerMode(false);
+							call.setSpeakerMode(true);
 						}
 
 						@Override
@@ -267,11 +268,13 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 			}
 		};
 		libraryInitializationThread.start();
-        
     }
     
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event){
+    	if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP || event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN){
+    		return false;
+    	}
     	return true;
     }
     
