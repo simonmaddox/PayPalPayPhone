@@ -6,4 +6,40 @@
     >
     <Button android:text="Use this PayPalPayPhone" android:layout_width="match_parent" android:id="@+id/start" android:layout_height="wrap_content" android:layout_centerVertical="true" android:layout_alignParentLeft="true" android:layout_marginLeft="20dp" android:layout_marginRight="20dp"></Button>
 
+	<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginLeft="27dp"
+    android:layout_marginTop="120dp"
+    >
+    	<TextView android:layout_width="264dp"
+    	android:layout_height="60dp" 
+    	android:id="@+id/enteredNumber" 
+    	android:text=""
+    	android:textSize="38dp"
+    	android:gravity="center|center_horizontal"></TextView>
+    	
+    	<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    	android:orientation="vertical"
+    	android:layout_width="wrap_content"
+    	android:layout_height="wrap_content"
+    	android:layout_below="@id/enteredNumber"
+    	android:id="@+id/dialpadWrapper"
+    	>
+			<include layout="@layout/dialpad" />
+		</RelativeLayout>
+		
+		<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    	android:orientation="vertical"
+    	android:layout_width="wrap_content"
+    	android:layout_height="wrap_content"
+    	android:layout_below="@id/dialpadWrapper"
+    	android:id="@+id/buttonsWrapper"
+    	android:layout_marginLeft="-15dp"
+    	>
+			<include layout="@layout/voicemail_dial_delete"/>
+		</RelativeLayout>
+
+	</RelativeLayout>
 </RelativeLayout>
