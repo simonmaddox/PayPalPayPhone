@@ -199,6 +199,10 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 						public void onCallEnded (SipAudioCall call) {
 							Log.e("SIP", "onCallEnded");
 							
+							if (mProximityWakeLock.isHeld()) {
+								mProximityWakeLock.release();
+							}
+							
 							handler.post(new Runnable(){
 
 								@Override
