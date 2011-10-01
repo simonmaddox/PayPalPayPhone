@@ -1,20 +1,28 @@
 package com.simonmaddox.android.ota11.paypalphone;
 
+import java.util.Date;
 import java.util.HashMap;
 
+import com.google.i18n.phonenumbers.NumberParseException;
+import com.google.i18n.phonenumbers.PhoneNumberUtil;
+import com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberFormat;
+import com.google.i18n.phonenumbers.Phonenumber.PhoneNumber;
 import com.loopj.android.http.AsyncHttpResponseHandler;
 import com.paypal.android.MEP.PayPal;
 import com.paypal.android.MEP.PayPalPreapproval;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.net.ParseException;
+import android.net.sip.SipAudioCall;
 import android.net.sip.SipException;
 import android.net.sip.SipManager;
 import android.net.sip.SipProfile;
 import android.net.sip.SipRegistrationListener;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.PowerManager;
 import android.telephony.PhoneNumberUtils;
 import android.text.Editable;
 import android.text.method.DialerKeyListener;
@@ -27,6 +35,7 @@ import android.view.WindowManager;
 import android.view.View.OnClickListener;
 import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 public class PayPalPhoneActivity extends Activity implements View.OnTouchListener, View.OnKeyListener {
@@ -44,6 +53,7 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 	private ButtonGridLayout dialpad;
 	private ImageButton dialButton;
 	private ImageButton deleteButton;
+	private RelativeLayout phoneWrapper;
 	
 	private SipManager sipManager = null;
     private SipProfile me = null;
@@ -53,6 +63,12 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
     
     private static final HashMap<Integer, Character> mDisplayMap =
             new HashMap<Integer, Character>();
+    
+    private SipAudioCall call;
+    
+    private PowerManager.WakeLock mProximityWakeLock;
+    
+    private long callStartTime;
     
     static {
         // Map the buttons to the display characters
@@ -83,8 +99,14 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
         
         handler = new Handler();
         
+        int PROXIMITY_SCREEN_OFF_WAKE_LOCK = 32;
+		PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        mProximityWakeLock = pm.newWakeLock(PROXIMITY_SCREEN_OFF_WAKE_LOCK, "PayPalPhoneActivity");
+        
         dialpad = (ButtonGridLayout) findViewById(R.id.dialpad);
-        //dialpad.setVisibility(View.GONE);
+        
+        phoneWrapper = (RelativeLayout) findViewById(R.id.phoneWrapper);
+        phoneWrapper.setVisibility(View.GONE);
         
         mDialpadDigits = (TextView) findViewById(R.id.enteredNumber);
         
@@ -103,7 +125,7 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
         setupKeypad(dialpad);
         
         startButton = (Button) findViewById(R.id.start);
-        startButton.setVisibility(View.GONE);
+        startButton.setVisibility(View.VISIBLE);
         startButton.setEnabled(false);
         startButton.setOnClickListener(new OnClickListener(){
 
@@ -126,8 +148,61 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
         dialButton.setOnClickListener(new OnClickListener(){
 
 			@Override
-			public void onClick(View arg0) {
-				// TODO: call				
+			public void onClick(View view) {
+				PhoneNumberUtil phoneUtil = PhoneNumberUtil.getInstance();
+				String tempMsisdn = null;
+				try {
+					PhoneNumber number = phoneUtil.parse(mDialpadDigits.getText().toString(), "GB");
+					tempMsisdn = phoneUtil.format(number, PhoneNumberFormat.E164).replace("+", "");
+
+				} catch (NumberParseException e) {
+					tempMsisdn = mDialpadDigits.getText().toString();
+				}
+				
+				call = null;
+
+				try {
+
+					SipProfile.Builder builder = new SipProfile.Builder(tempMsisdn, me.getSipDomain());
+					builder.setAutoRegistration(false);
+					SipProfile rec = builder.build();
+
+					call = sipManager.makeAudioCall(me, rec, new SipAudioCall.Listener() {
+						@Override
+						public void onRinging(SipAudioCall call, SipProfile caller) {
+							Log.e("SIP", "onRinging");
+						}
+
+						@Override
+						public void onCallEstablished (SipAudioCall call) {
+							if (!mProximityWakeLock.isHeld()) {
+							      mProximityWakeLock.acquire();
+							}
+							Log.e("SIP", "onCallEstablished");
+							callStartTime = new Date().getTime();
+							call.startAudio();
+							call.setSpeakerMode(false);
+						}
+
+						@Override
+						public void onCallEnded (SipAudioCall call) {
+							Log.e("SIP", "onCallEnded");
+						}
+
+						@Override
+						public void onChanged (SipAudioCall call) {
+							Log.e("SIP", "onChanged: " + call.getState());
+						}
+
+						@Override
+						public void onError (SipAudioCall call, int errorCode, String errorMessage) {				
+							Log.e("SIP ERROR", "" + errorMessage + " : " + errorCode);
+						}
+					}, 30);
+
+				} catch (Exception e) {
+					Log.e("EX", e.toString());
+				}
 			}
         	
         });
@@ -222,6 +297,7 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 				startButton.setEnabled(true);
 				loginToSIP();
 				startButton.setVisibility(View.GONE);
+				phoneWrapper.setVisibility(View.VISIBLE);
 			}
 		});
 	}
