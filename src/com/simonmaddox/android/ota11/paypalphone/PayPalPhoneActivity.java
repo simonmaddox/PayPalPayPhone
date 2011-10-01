@@ -20,6 +20,7 @@ import android.net.sip.SipException;
 import android.net.sip.SipManager;
 import android.net.sip.SipProfile;
 import android.net.sip.SipRegistrationListener;
+import android.net.sip.SipSession;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.PowerManager;
@@ -149,6 +150,15 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 
 			@Override
 			public void onClick(View view) {
+				
+				if (call != null && (call.getState() == SipSession.State.IN_CALL || call.getState() == SipSession.State.OUTGOING_CALL || call.getState() == SipSession.State.OUTGOING_CALL_RING_BACK)){
+					try {
+						call.endCall();
+					} catch (SipException e) {
+					}
+					return;
+				}
+				
 				PhoneNumberUtil phoneUtil = PhoneNumberUtil.getInstance();
 				String tempMsisdn = null;
 				try {
@@ -187,6 +197,15 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 						@Override
 						public void onCallEnded (SipAudioCall call) {
 							Log.e("SIP", "onCallEnded");
+							
+							handler.post(new Runnable(){
+
+								@Override
+								public void run() {
+									callEnded();
+								}
+								
+							});
 						}
 
 						@Override
@@ -199,6 +218,16 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 							Log.e("SIP ERROR", "" + errorMessage + " : " + errorCode);
 						}
 					}, 30);
+					
+					
+					handler.post(new Runnable(){
+
+						@Override
+						public void run() {
+							callStarted();
+						}
+						
+					});
 
 				} catch (Exception e) {
 					Log.e("EX", e.toString());
@@ -372,7 +401,19 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
         }
     }
     
+    private void callStarted(){
+    	dialpad.setVisibility(View.INVISIBLE);
+		deleteButton.setImageBitmap(null);
+		deleteButton.setEnabled(false);
+		dialButton.setImageResource(R.drawable.hangup);
+    }
     
+    private void callEnded(){
+    	dialpad.setVisibility(View.VISIBLE);
+		deleteButton.setImageResource(R.drawable.ic_dial_action_delete);
+		deleteButton.setEnabled(true);
+		dialButton.setImageResource(R.drawable.ic_dial_action_call);
+    }
     
     private final void processDtmf(char c) {
     	// if it is a valid key, then update the display and send the dtmf tone.
