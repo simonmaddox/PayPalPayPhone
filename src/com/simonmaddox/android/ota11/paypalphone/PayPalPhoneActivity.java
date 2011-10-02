@@ -2,6 +2,8 @@ package com.simonmaddox.android.ota11.paypalphone;
 
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import com.google.i18n.phonenumbers.NumberParseException;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
@@ -75,8 +77,12 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
     
     private long callStartTime;
     
+    public Timer timer;
+    
     double credits = 0.00;
     double pricePerMinute = 0.00;
+    
+    private Thread libraryInitializationThread;
     
     static {
         // Map the buttons to the display characters
@@ -129,7 +135,7 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
         
         startButton = (Button) findViewById(R.id.start);
         startButton.setVisibility(View.VISIBLE);
-        startButton.setEnabled(false);
+        //startButton.setEnabled(false);
         startButton.setOnClickListener(new OnClickListener(){
 
 			@Override
@@ -243,7 +249,7 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
         	
         });
         
-        Thread libraryInitializationThread = new Thread() {
+        libraryInitializationThread = new Thread() {
 			public void run() {
 				initLibrary();
 				
@@ -302,6 +308,10 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 					}
 					Log.e("SIP", "onCallEstablished");
 					callStartTime = new Date().getTime();
+					
+					timer = new Timer();
+					timer.scheduleAtFixedRate(new CallTimeTask(), 10000, 10000); 
+					
 					call.startAudio();
 					call.setSpeakerMode(true);
 				}
@@ -313,6 +323,8 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
 					if (mProximityWakeLock.isHeld()) {
 						mProximityWakeLock.release();
 					}
+					
+					timer.cancel();
 					
 					handler.post(new Runnable(){
 
@@ -374,6 +386,14 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
     		@Override
     		public void onFailure(Throwable e) {
     			Log.e("FAIL", e.toString());
+    			handler.post(new Runnable(){
+
+					@Override
+					public void run() {
+						startButton.setEnabled(true);
+					}
+    				
+    			});
     		}
     	});
     }
@@ -723,6 +743,35 @@ public class PayPalPhoneActivity extends Activity implements View.OnTouchListene
         public final char[] DTMF_CHARACTERS = new char[] {
             '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '#', '*'
         };
+    }
+    
+    public class CallTimeTask extends TimerTask {
+
+		@Override
+		public void run() {
+			
+			final CallTimeTask self = this;
+			
+			credits -= pricePerMinute;
+			handler.post(new Runnable(){
+
+				@Override
+				public void run() {
+					if (credits < pricePerMinute){
+						if (!call.isMuted()){
+							call.toggleMute();
+						}						
+					} else {
+						if (call.isMuted()){
+							call.toggleMute();
+						}
+						voicemailButton.setText(String.format("£%.2f", credits));
+					}
+				}
+				
+			});
+		}
+    	
     }
 }
 	
